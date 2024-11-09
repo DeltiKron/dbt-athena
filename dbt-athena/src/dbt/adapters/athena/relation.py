@@ -39,6 +39,7 @@ class AthenaRelation(BaseRelation):
     include_policy: Policy = field(default_factory=lambda: AthenaIncludePolicy())
     s3_path_table_part: Optional[str] = None
     detailed_table_type: Optional[str] = None  # table_type option from the table Parameters in Glue Catalog
+    catalog_id: Optional[str] = None  # catalog id for multi-account setups
 
     def render_hive(self) -> str:
         """
