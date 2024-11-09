@@ -34,6 +34,7 @@ class LfTagsManager:
         self.lf_client = lf_client
         self.database = relation.schema
         self.table = relation.identifier
+        self.catalog_id = relation.catalog_id
         self.lf_tags = lf_tags_config.tags
         self.lf_tags_columns = lf_tags_config.tags_columns
         self.lf_inherited_tags = set(lf_tags_config.inherited_tags) if lf_tags_config.inherited_tags else set()
@@ -41,6 +42,8 @@ class LfTagsManager:
     def process_lf_tags_database(self) -> None:
         if self.lf_tags:
             database_resource = {"Database": {"Name": self.database}}
+            if self.catalog_id:
+                database_resource["Database"] = dict(**database_resource["Database"], CatalogId=self.catalog_id)
             response = self.lf_client.add_lf_tags_to_resource(
                 Resource=database_resource, LFTags=[{"TagKey": k, "TagValues": [v]} for k, v in self.lf_tags.items()]
             )
@@ -48,6 +51,8 @@ class LfTagsManager:
 
     def process_lf_tags(self) -> None:
         table_resource = {"Table": {"DatabaseName": self.database, "Name": self.table}}
+        if self.catalog_id:
+            table_resource["Table"]["CatalogId"] = self.catalog_id
         existing_lf_tags = self.lf_client.get_resource_lf_tags(Resource=table_resource)
         self._remove_lf_tags_columns(existing_lf_tags)
         self._apply_lf_tags_table(table_resource, existing_lf_tags)
@@ -84,9 +89,11 @@ class LfTagsManager:
                     resource = {
                         "TableWithColumns": {"DatabaseName": self.database, "Name": self.table, "ColumnNames": columns}
                     }
-                    response = self.lf_client.remove_lf_tags_from_resource(
-                        Resource=resource, LFTags=[{"TagKey": tag_key, "TagValues": [tag_value]}]
-                    )
+                    lf_tag_to_remove = [{"TagKey": tag_key, "TagValues": [tag_value]}]
+                    if self.catalog_id:
+                        resource["TableWithColumns"]["CatalogId"] = self.catalog_id
+                        lf_tag_to_remove = [dict(**tag, CatalogId=self.catalog_id) for tag in lf_tag_to_remove]
+                    response = self.lf_client.remove_lf_tags_from_resource(Resource=resource, LFTags=lf_tag_to_remove)
                     self._parse_and_log_lf_response(response, columns, {tag_key: tag_value}, "remove")
 
     @staticmethod
@@ -108,18 +115,19 @@ class LfTagsManager:
         logger.debug(f"CONFIG TAGS: {self.lf_tags}")
 
         to_remove = LfTagsManager._table_tags_to_remove(lf_tags_table, self.lf_tags, self.lf_inherited_tags)
-
+        lf_tags_to_remove = [{"TagKey": k, "TagValues": v} for k, v in to_remove.items()]
+        if self.catalog_id:
+            lf_tags_to_remove = [dict(**tag, CatalogId=self.catalog_id) for tag in lf_tags_to_remove]
         logger.debug(f"TAGS TO REMOVE: {to_remove}")
         if to_remove:
-            response = self.lf_client.remove_lf_tags_from_resource(
-                Resource=table_resource, LFTags=[{"TagKey": k, "TagValues": v} for k, v in to_remove.items()]
-            )
+            response = self.lf_client.remove_lf_tags_from_resource(Resource=table_resource, LFTags=lf_tags_to_remove)
             self._parse_and_log_lf_response(response, None, self.lf_tags, "remove")
 
+        lf_tags_to_add = [{"TagKey": k, "TagValues": [v]} for k, v in (self.lf_tags or {}).items()]
+        if self.catalog_id:
+            lf_tags_to_add = [dict(**tag, CatalogId=self.catalog_id) for tag in lf_tags_to_add]
         if self.lf_tags:
-            response = self.lf_client.add_lf_tags_to_resource(
-                Resource=table_resource, LFTags=[{"TagKey": k, "TagValues": [v]} for k, v in self.lf_tags.items()]
-            )
+            response = self.lf_client.add_lf_tags_to_resource(Resource=table_resource, LFTags=lf_tags_to_add)
             self._parse_and_log_lf_response(response, None, self.lf_tags)
 
     def _apply_lf_tags_columns(self) -> None:
@@ -129,9 +137,14 @@ class LfTagsManager:
                     resource = {
                         "TableWithColumns": {"DatabaseName": self.database, "Name": self.table, "ColumnNames": columns}
                     }
+                    lf_tag_to_add = [{"TagKey": tag_key, "TagValues": [tag_value]}]
+                    if self.catalog_id:
+                        resource["TableWithColumns"]["CatalogId"] = self.catalog_id
+                        lf_tag_to_add = [dict(**tag, CatalogId=self.catalog_id) for tag in lf_tag_to_add]
+
                     response = self.lf_client.add_lf_tags_to_resource(
                         Resource=resource,
-                        LFTags=[{"TagKey": tag_key, "TagValues": [tag_value]}],
+                        LFTags=lf_tag_to_add,
                     )
                     self._parse_and_log_lf_response(response, columns, {tag_key: tag_value})
 
