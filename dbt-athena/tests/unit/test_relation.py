@@ -53,3 +53,13 @@ class TestAthenaRelation:
             schema=DATABASE_NAME,
         )
         assert relation.render_pure() == f"{DATA_CATALOG_NAME}.{DATABASE_NAME}.{TABLE_NAME}"
+
+    def test_set_catalog_id(self):
+        placeholder_catalog_id = "123456789123"
+        relation = AthenaRelation.create(
+            identifier=TABLE_NAME,
+            database=DATA_CATALOG_NAME,
+            schema=DATABASE_NAME,
+            catalog_id=placeholder_catalog_id,
+        )
+        assert relation.catalog_id == placeholder_catalog_id
